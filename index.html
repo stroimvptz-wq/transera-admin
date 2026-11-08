@@ -3,16 +3,68 @@
 <style>:root{font-family:Arial,sans-serif;background:#f3f7fb;color:#102b4a}*{box-sizing:border-box}body{margin:0}header{background:#102b4a;color:#fff;padding:22px max(20px,calc((100% - 880px)/2));font-size:23px;font-weight:800}header span{color:#19c9e9}main{max-width:880px;margin:28px auto;padding:0 16px}.card{background:white;border:1px solid #dce6ef;border-radius:14px;padding:24px;margin:18px 0;box-shadow:0 4px 20px #102b4a0b}label{display:block;margin:14px 0 5px;font-weight:600}input,select{width:100%;padding:12px;border:1px solid #b8cbd9;border-radius:8px;font-size:16px}button{background:#087da0;color:white;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;margin:8px 8px 8px 0}button:disabled{opacity:.5}button.secondary{background:#314c66}button.danger{background:#ad3e44}.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.muted{color:#60778c;font-size:14px}.item{border-top:1px solid #dce6ef;padding:12px 0}.error{color:#a32131}.ok{color:#087a48}[hidden]{display:none!important}</style></head>
 <body><header>TRANS<span>ERA</span> · Администратор</header><main>
 <section class="card" id="login"><h2>Вход администратора</h2><p class="muted">Используй существующие логин и пароль TRANSERA. Доступ проверяется на сервере.</p><form id="loginForm"><label>Электронная почта</label><input type="email" name="email" autocomplete="username" required><label>Пароль</label><input type="password" name="password" autocomplete="current-password" minlength="10" required><button>Войти</button></form><p id="loginStatus" role="status"></p></section>
-<section id="admin" hidden><div class="row"><h2>Управление промокодами</h2><button class="secondary" id="logout">Выйти</button></div><div class="card"><h3>Создать промокод</h3><form id="createForm"><label>Название промокода</label><input name="code" placeholder="TRANSERA2026" pattern="[A-Za-z0-9_-]{4,40}" maxlength="40" required><label>Срок подписки</label><select name="months"><option value="1">1 месяц</option><option value="6">6 месяцев</option></select><label>Максимум активаций</label><input name="max_uses" type="number" min="1" max="100000" value="5" required><button>Создать промокод</button></form><p id="createStatus" role="status"></p></div><div class="card"><div class="row"><h3>Созданные промокоды</h3><button class="secondary" id="refresh">Обновить</button></div><div id="items" role="status"></div></div></section>
-<p class="muted">Коды сохраняются в Яндекс Облаке. Отключённые коды остаются в истории, но больше не работают.</p></main>
+<section id="admin" hidden><div class="row"><h2>Управление промокодами</h2><button class="secondary" id="logout">Выйти</button></div><div class="card"><h3>Создать промокод</h3><form id="createForm"><label>Название промокода</label><input name="code" placeholder="TRANSERA2026" pattern="[A-Za-z0-9_-]{4,40}" maxlength="40" required><label>Срок подписки</label><select name="months"><option value="1">1 месяц</option><option value="6">6 месяцев</option></select><label>Максимум активаций</label><input name="max_uses" type="number" min="1" max="100000" value="5" required><button>Создать промокод</button></form><p id="createStatus" role="status"></p></div><div class="card"><div class="row"><h3>Созданные промокоды</h3><button class="secondary" id="refresh">Обновить</button></div><div id="items" role="status"></div><div class="row"><h3>Архив</h3><button class="secondary" id="toggleArchive" type="button">Показать архив</button></div><div id="archiveItems" hidden></div></div></section>
+<p class="muted">Коды сохраняются в Яндекс Облаке. Архив пока сохраняется только в этом браузере: на другом устройстве список может отличаться. Перенос в архив не отключает промокод.</p></main>
 <script>
 const AUTH='https://functions.yandexcloud.net/d4emctueu2poauh119et';
 const PAY='https://functions.yandexcloud.net/d4ep5vln1lk0qornbcpr';
 let token=null;
+const ARCHIVE_KEY="transera-admin-archived-promos-v1";
+let archiveVisible=false;
+function archivedCodes(){try{return new Set(JSON.parse(localStorage.getItem(ARCHIVE_KEY)||"[]"))}catch{return new Set()}}
+function saveArchive(codes){localStorage.setItem(ARCHIVE_KEY,JSON.stringify([...codes]))}
 const el=id=>document.getElementById(id);
 function message(id,value,ok=false){const e=el(id);e.textContent=value;e.className=ok?'ok':'error'}
 async function call(base,route,body){const res=await fetch(base+'?route='+encodeURIComponent(route),{method:body?'POST':'GET',headers:{...(body?{'Content-Type':'application/json'}:{}),...(token?{'X-TRANSERA-Token':'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(res.status===404&&base===PAY?'Сервер управления промокодами ещё не обновлён (маршрут /admin/promos не найден). Логин и пароль могли быть верными.':res.status===403?'Нет прав администратора или адрес сайта не разрешён сервером':data.error||'Ошибка сервера '+res.status);return data}
-async function refresh(){const items=el('items');items.textContent='Загрузка…';try{const data=await call(PAY,'/admin/promos');items.replaceChildren();if(!data.promos?.length){items.textContent='Промокодов пока нет';return}for(const p of data.promos){const line=document.createElement('div');line.className='item';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=p.code;const detail=document.createElement('div');detail.className='muted';detail.textContent=(p.months===1?'1 месяц':'6 месяцев')+' · использовано '+p.used_count+' из '+p.max_uses+' · '+(p.active?'Активен':'Отключён');info.append(name,detail);line.append(info);if(p.active){const btn=document.createElement('button');btn.className='danger';btn.textContent='Отключить';btn.addEventListener('click',async()=>{if(!confirm('Отключить промокод '+p.code+'?'))return;btn.disabled=true;try{await call(PAY,'/admin/promos/disable',{code:p.code});await refresh()}catch(e){alert(e.message);btn.disabled=false}});line.append(btn)}items.append(line)}}catch(e){items.textContent=e.message;items.className='error'}}
+async function refresh(){
+  const items=el('items'), archive=el('archiveItems');
+  items.textContent='Загрузка…';archive.replaceChildren();
+  try{
+    const data=await call(PAY,'/admin/promos');
+    items.replaceChildren();
+    const hidden=archivedCodes();
+    let visibleCount=0,archiveCount=0;
+    for(const p of data.promos||[]){
+      const isArchived=hidden.has(p.code);
+      if(isArchived)archiveCount++;else visibleCount++;
+      const line=document.createElement('div');line.className='item';
+      const info=document.createElement('div');
+      const name=document.createElement('strong');name.textContent=p.code;
+      const detail=document.createElement('div');detail.className='muted';
+      detail.textContent=(p.months===1?'1 месяц':'6 месяцев')+' · использовано '+p.used_count+' из '+p.max_uses+' · '+(p.active?'Активен':'Отключён');
+      info.append(name,detail);line.append(info);
+      const archiveBtn=document.createElement('button');archiveBtn.className='secondary';
+      archiveBtn.textContent=isArchived?'Вернуть в список':'Выдал / В архив';
+      archiveBtn.addEventListener('click',()=>{
+        const next=archivedCodes();
+        if(isArchived)next.delete(p.code);else next.add(p.code);
+        saveArchive(next);refresh();
+      });
+      line.append(archiveBtn);
+      if(p.active){
+        const btn=document.createElement('button');btn.className='danger';btn.textContent='Отключить';
+        btn.addEventListener('click',async()=>{
+          if(!confirm('Отключить промокод '+p.code+'? Новые активации станут невозможны.'))return;
+          btn.disabled=true;
+          try{await call(PAY,'/admin/promos/disable',{code:p.code});await refresh()}
+          catch(e){alert(e.message);btn.disabled=false}
+        });
+        line.append(btn);
+      }
+      (isArchived?archive:items).append(line);
+    }
+    if(!visibleCount)items.textContent='В рабочем списке промокодов нет';
+    if(!archiveCount)archive.textContent='Архив пуст';
+    el('toggleArchive').textContent=(archiveVisible?'Скрыть архив':'Показать архив')+' ('+archiveCount+')';
+    archive.hidden=!archiveVisible;
+  }catch(e){items.textContent=e.message;items.className='error'}
+}
+el('toggleArchive').addEventListener('click',()=>{
+  archiveVisible=!archiveVisible;
+  el('archiveItems').hidden=!archiveVisible;
+  const count=archivedCodes().size;
+  el('toggleArchive').textContent=(archiveVisible?'Скрыть архив':'Показать архив')+' ('+count+')';
+});
 el('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;message('loginStatus','Проверяем доступ…',true);try{const data=await call(AUTH,'/login',{email:e.target.email.value.trim(),password:e.target.password.value});if(!data.token)throw Error('Сервер не вернул токен');token=data.token;await call(PAY,'/admin/promos');el('login').hidden=true;el('admin').hidden=false;e.target.password.value='';await refresh()}catch(err){token=null;message('loginStatus',err.message)}finally{btn.disabled=false}});
 el('createForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;try{const code=e.target.code.value.trim().toUpperCase();await call(PAY,'/admin/promos/create',{code,months:Number(e.target.months.value),max_uses:Number(e.target.max_uses.value)});message('createStatus','Промокод '+code+' создан',true);e.target.code.value='';await refresh()}catch(err){message('createStatus',err.message)}finally{btn.disabled=false}});
 el('refresh').addEventListener('click',refresh);
