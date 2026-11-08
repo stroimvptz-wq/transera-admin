@@ -3,8 +3,8 @@
 <style>:root{font-family:Arial,sans-serif;background:#f3f7fb;color:#102b4a}*{box-sizing:border-box}body{margin:0}header{background:#102b4a;color:#fff;padding:22px max(20px,calc((100% - 880px)/2));font-size:23px;font-weight:800}header span{color:#19c9e9}main{max-width:880px;margin:28px auto;padding:0 16px}.card{background:white;border:1px solid #dce6ef;border-radius:14px;padding:24px;margin:18px 0;box-shadow:0 4px 20px #102b4a0b}label{display:block;margin:14px 0 5px;font-weight:600}input,select{width:100%;padding:12px;border:1px solid #b8cbd9;border-radius:8px;font-size:16px}button{background:#087da0;color:white;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;margin:8px 8px 8px 0}button:disabled{opacity:.5}button.secondary{background:#314c66}button.danger{background:#ad3e44}.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.muted{color:#60778c;font-size:14px}.item{border-top:1px solid #dce6ef;padding:12px 0}.error{color:#a32131}.ok{color:#087a48}[hidden]{display:none!important}</style></head>
 <body><header>TRANS<span>ERA</span> · Администратор</header><main>
 <section class="card" id="login"><h2>Вход администратора</h2><p class="muted">Используй существующие логин и пароль TRANSERA. Доступ проверяется на сервере.</p><form id="loginForm"><label>Электронная почта</label><input type="email" name="email" autocomplete="username" required><label>Пароль</label><input type="password" name="password" autocomplete="current-password" minlength="10" required><button>Войти</button></form><p id="loginStatus" role="status"></p></section>
-<section id="admin" hidden><div class="row"><h2>Управление промокодами</h2><button class="secondary" id="logout">Выйти</button></div><div class="card"><h3>Создать промокод</h3><form id="createForm"><label>Название промокода</label><input name="code" placeholder="TRANSERA2026" pattern="[A-Za-z0-9_-]{4,40}" maxlength="40" required><label>Срок подписки</label><select name="months"><option value="1">1 месяц</option><option value="6">6 месяцев</option></select><label>Максимум активаций</label><input name="max_uses" type="number" min="1" max="100000" value="5" required><button>Создать промокод</button></form><p id="createStatus" role="status"></p></div><div class="card"><div class="row"><h3>Созданные промокоды</h3><button class="secondary" id="refresh">Обновить</button></div><div id="items" role="status"></div><div class="row"><h3>Архив</h3><button class="secondary" id="toggleArchive" type="button">Показать архив</button></div><div id="archiveItems" hidden></div></div></section>
-<p class="muted">Коды сохраняются в Яндекс Облаке. Архив пока сохраняется только в этом браузере: на другом устройстве список может отличаться. Перенос в архив не отключает промокод.</p></main>
+<section id="admin" hidden><div class="row"><h2>Управление промокодами</h2><button class="secondary" id="logout">Выйти</button></div><div class="card"><h3>Создать промокод</h3><form id="createForm"><label>Название промокода</label><input name="code" placeholder="TRANSERA2026" pattern="[A-Za-z0-9_-]{4,40}" maxlength="40" required><label>Срок подписки</label><select name="months"><option value="1">1 месяц</option><option value="6">6 месяцев</option></select><p class="muted">Каждый новый промокод одноразовый — только одна активация.</p><button>Создать промокод</button></form><p id="createStatus" role="status"></p></div><div class="card"><h3>Создать сразу несколько одноразовых кодов</h3><form id="batchForm"><label>Срок подписки</label><select name="months"><option value="1">1 месяц</option><option value="6">6 месяцев</option></select><label>Количество промокодов</label><select name="count"><option value="10">10 кодов</option><option value="20">20 кодов</option><option value="50">50 кодов</option></select><button type="submit">Создать коды</button></form><p id="batchStatus" role="status"></p><label for="batchOutput">Созданные коды для выдачи клиентам</label><textarea id="batchOutput" readonly rows="6" style="width:100%;padding:12px;border:1px solid #b8cbd9;border-radius:8px;resize:vertical" placeholder="Здесь появятся новые коды"></textarea><button type="button" class="secondary" id="copyBatch">Копировать коды</button><p class="muted">Создание идёт по одному коду. Если произойдёт ошибка, уже созданные коды сохранятся, а их список останется в поле выше.</p></div><div class="card"><div class="row"><h3>Созданные промокоды</h3><button class="secondary" id="refresh">Обновить</button></div><div id="items" role="status"></div><div class="row"><h3>Архив</h3><button class="secondary" id="toggleArchive" type="button">Показать архив</button></div><div id="archiveItems" hidden></div></div></section>
+<p class="muted">Коды сохраняются в Яндекс Облаке. Использованные одноразовые коды автоматически перемещаются в архив при обновлении списка. Архив пока сохраняется только в этом браузере: на другом устройстве список может отличаться. Перенос в архив не отключает промокод.</p></main>
 <script>
 const AUTH='https://functions.yandexcloud.net/d4emctueu2poauh119et';
 const PAY='https://functions.yandexcloud.net/d4ep5vln1lk0qornbcpr';
@@ -23,6 +23,9 @@ async function refresh(){
     const data=await call(PAY,'/admin/promos');
     items.replaceChildren();
     const hidden=archivedCodes();
+    let archiveChanged=false;
+    for(const p of data.promos||[]){if(p.max_uses===1 && p.used_count>=1 && !hidden.has(p.code)){hidden.add(p.code);archiveChanged=true}}
+    if(archiveChanged)saveArchive(hidden);
     let visibleCount=0,archiveCount=0;
     for(const p of data.promos||[]){
       const isArchived=hidden.has(p.code);
@@ -66,7 +69,52 @@ el('toggleArchive').addEventListener('click',()=>{
   el('toggleArchive').textContent=(archiveVisible?'Скрыть архив':'Показать архив')+' ('+count+')';
 });
 el('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;message('loginStatus','Проверяем доступ…',true);try{const data=await call(AUTH,'/login',{email:e.target.email.value.trim(),password:e.target.password.value});if(!data.token)throw Error('Сервер не вернул токен');token=data.token;await call(PAY,'/admin/promos');el('login').hidden=true;el('admin').hidden=false;e.target.password.value='';await refresh()}catch(err){token=null;message('loginStatus',err.message)}finally{btn.disabled=false}});
-el('createForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;try{const code=e.target.code.value.trim().toUpperCase();await call(PAY,'/admin/promos/create',{code,months:Number(e.target.months.value),max_uses:Number(e.target.max_uses.value)});message('createStatus','Промокод '+code+' создан',true);e.target.code.value='';await refresh()}catch(err){message('createStatus',err.message)}finally{btn.disabled=false}});
+el('createForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;try{const code=e.target.code.value.trim().toUpperCase();await call(PAY,'/admin/promos/create',{code,months:Number(e.target.months.value),max_uses:1});message('createStatus','Промокод '+code+' создан',true);e.target.code.value='';await refresh()}catch(err){message('createStatus',err.message)}finally{btn.disabled=false}});
+function makeRandomCode(){
+  const bytes=new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  return 'TR-'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
+}
+el('batchForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const btn=e.target.querySelector('button[type="submit"]');
+  const count=Number(e.target.count.value);
+  const months=Number(e.target.months.value);
+  if(![10,20,50].includes(count)||![1,6].includes(months))return;
+  btn.disabled=true;
+  const output=el('batchOutput');
+  output.value='';
+  const created=[];
+  try{
+    for(let i=0;i<count;i++){
+      let success=false;
+      for(let attempt=0;attempt<3&&!success;attempt++){
+        const code=makeRandomCode();
+        try{
+          await call(PAY,'/admin/promos/create',{code,months,max_uses:1});
+          created.push(code);
+          output.value=created.join('\n');
+          message('batchStatus','Создано '+created.length+' из '+count+'…',true);
+          success=true;
+        }catch(err){
+          if(err.message!=='CODE_EXISTS'||attempt===2)throw err;
+        }
+      }
+    }
+    message('batchStatus','Готово: создано '+created.length+' одноразовых кодов. Скопируй список перед уходом со страницы.',true);
+  }catch(err){
+    message('batchStatus','Создано '+created.length+' из '+count+'. Ошибка: '+err.message+'. Уже созданные коды сохранены в базе.');
+  }finally{
+    btn.disabled=false;
+    await refresh();
+  }
+});
+el('copyBatch').addEventListener('click',async()=>{
+  const value=el('batchOutput').value;
+  if(!value){message('batchStatus','Сначала создай коды.');return}
+  try{await navigator.clipboard.writeText(value);message('batchStatus','Коды скопированы.',true)}
+  catch{el('batchOutput').focus();el('batchOutput').select();message('batchStatus','Выделил коды. Нажми Ctrl + C.')}
+});
 el('refresh').addEventListener('click',refresh);
 el('logout').addEventListener('click',()=>{token=null;el('admin').hidden=true;el('login').hidden=false;message('loginStatus','Вы вышли',true)});
 </script></body></html>
