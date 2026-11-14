@@ -1,0 +1,2 @@
+/* Permanent public endpoints shared by Test2 and the main site. Fill content/billing only after creation. */
+window.BUSINESS_PLATFORM=Object.freeze({environment:'production',sharedData:true,auth:'https://functions.yandexcloud.net/d4emctueu2poauh119et',subscriptions:'https://functions.yandexcloud.net/d4ep5vln1lk0qornbcpr',reset:'https://functions.yandexcloud.net/d4e9regg2l0vqhr48ka4',billing:'https://functions.yandexcloud.net/d4e3nke8k7jpo1t468su',content:'',chat:'https://functions.yandexcloud.net/d4e090b4l93rg3lmfkcs'});
